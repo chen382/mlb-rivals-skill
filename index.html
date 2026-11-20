@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MLB 勁旅對決 技能評分計算機（洛年自製）</title>
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #0b1120;
+      color: #f1f5f9;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tier-gold { background: linear-gradient(135deg, #b45309, #f59e0b); color: #fff; }
+    .tier-moment { background: linear-gradient(135deg, #047857, #10b981); color: #fff; }
+    .tier-glory { background: linear-gradient(135deg, #3b0764, #7e22ce); color: #fff; }
+    .tier-hof { background: linear-gradient(135deg, #7f1d1d, #dc2626); color: #fff; }
+    .tier-wbc { background: linear-gradient(135deg, #1e3a8a, #2563eb); color: #fff; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="min-h-screen pb-24">
+
+  <!-- 頂部標題與同步狀態 -->
+  <header class="bg-slate-900/95 backdrop-blur border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 text-xs font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">臥龍閣-洛年製作</span>
+          <span id="sync-badge" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 text-slate-400 border border-slate-700">內建基準資料</span>
+        </div>
+        <h1 class="text-lg sm:text-xl font-black tracking-tight text-white mt-1">MLB 勁旅對決 技能評分計算機</h1>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="install-btn" class="hidden px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow">
+          安裝 App
+        </button>
+        <button onclick="manualSync()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold" title="重新同步試算表">
+          同步更新
+        </button>
+      </div>
+    </div>
+
+    <!-- 計算規則橫幅 -->
+    <div class="bg-slate-950/80 border-t border-slate-800/80 px-4 py-2 text-xs text-slate-300">
+      <div class="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div>
+          <span class="text-amber-400 font-bold">屬性加權：</span>力、準、威、變 <span class="text-white font-bold">×1.0</span> ｜ 選、耐、速、控、持久 <span class="text-white font-bold">×0.5</span>
+        </div>
+        <div class="text-slate-400">
+          發動機率以 MLB 勁旅對決平均機率計算（僅供參考，請自行判斷）
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 pt-4 space-y-5">
+
+    <!-- 主分頁切換 + 定位切換 -->
+    <div class="flex flex-col sm:flex-row gap-2 justify-between">
+      <div class="grid grid-cols-2 bg-slate-900 p-1 rounded-xl border border-slate-800 flex-1">
+        <button id="tab-calc" onclick="switchTab('calc')" class="py-2 rounded-lg text-sm font-bold bg-blue-600 text-white transition">
+          三技組合計算機
+        </button>
+        <button id="tab-db" onclick="switchTab('db')" class="py-2 rounded-lg text-sm font-bold text-slate-400 hover:text-white transition">
+          完整技能評分表
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 bg-slate-900 p-1 rounded-xl border border-slate-800 sm:w-56">
+        <button id="role-batter" onclick="switchRole('打者')" class="py-2 rounded-lg text-sm font-bold bg-amber-500 text-slate-950 transition">
+          打者技能
+        </button>
+        <button id="role-pitcher" onclick="switchRole('投手')" class="py-2 rounded-lg text-sm font-bold text-slate-400 hover:text-white transition">
+          投手技能
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== 分頁 1：技能組合計算機 ==================== -->
+    <section id="view-calc" class="space-y-4">
+      <!-- 總分看板 -->
+      <div class="bg-gradient-to-br from-slate-900 via-slate-900 to-blue-950/60 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">目前組合總評分（<span id="current-role-label">打者</span>）</p>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span id="total-score" class="text-4xl sm:text-5xl font-black text-amber-400 tabular-nums">0.00</span>
+              <span class="text-sm text-slate-400 font-bold">分</span>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <button onclick="saveComparison()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-bold shadow">
+              + 加入洗技對比
+            </button>
+            <button onclick="resetSlots()" class="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">
+              清空欄位
+            </button>
+          </div>
+        </div>
+        <div id="slot-summary-pills" class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800/80 text-xs"></div>
+      </div>
+
+      <!-- 3 個技能欄位 -->
+      <div id="slots-container" class="grid grid-cols-1 md:grid-cols-3 gap-3"></div>
+
+      <!-- 洗技決策對比區 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-slate-200">洗技決策對比區（可儲存多組技能比較）</h2>
+          <button onclick="clearComparisons()" class="text-xs text-slate-400 hover:text-red-400">全部清除</button>
+        </div>
+        <div id="comparison-list" class="space-y-2 text-xs text-slate-400">
+          尚未儲存對比組合，設定好上方 3 招後點擊「+ 加入洗技對比」。
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 分頁 2：完整評分表 ==================== -->
+    <section id="view-db" class="hidden space-y-3">
+      <!-- 搜尋與篩選列 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-3">
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input id="db-search" type="text" oninput="renderDatabase()" placeholder="搜尋技能名稱（例如：王牌、大師、節奏製造者...）"
+            class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" />
+          <select id="db-sort" onchange="renderDatabase()" class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
+            <option value="default">預設排序（原表順序）</option>
+            <option value="S">依 S 階分數高→低</option>
+            <option value="S1">依 S1 階分數高→低</option>
+            <option value="S2">依 S2 階分數高→低</option>
+            <option value="S3">依 S3 階分數高→低</option>
+            <option value="S4">依 S4 階分數高→低</option>
+          </select>
+        </div>
+
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5" id="tier-filter-bar"></div>
+      </div>
+
+      <!-- 資料表格 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs sm:text-sm">
+            <thead>
+              <tr class="bg-slate-950 text-slate-400 border-b border-slate-800">
+                <th class="py-2.5 px-3 font-bold">階級</th>
+                <th class="py-2.5 px-3 font-bold">技能名稱</th>
+                <th class="py-2.5 px-2 text-right font-bold">S</th>
+                <th class="py-2.5 px-2 text-right font-bold">S1</th>
+                <th class="py-2.5 px-2 text-right font-bold">S2</th>
+                <th class="py-2.5 px-2 text-right font-bold">S3</th>
+                <th class="py-2.5 px-2 text-right font-bold">S4</th>
+                <th class="py-2.5 px-3 text-center font-bold">操作</th>
+              </tr>
+            </thead>
+            <tbody id="db-table-body" class="divide-y divide-slate-800/70"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // 【日後更新設定】將你的 Google 試算表發佈為 CSV 後，把網址貼在下方雙引號內即可
+    // 欄位順序：定位,階級,技能名稱,S,S1,S2,S3,S4,特殊選項,備註,重點標紅(TRUE/FALSE)
+    // =========================================================================
+    const GOOGLE_SHEET_CSV_URL = "";
+
+    // 內建完整基準資料庫（來自 6 張參考圖）
+    const DEFAULT_SKILLS = [
+      // --- WBC 打者藍技 ---
+      { role: '打者', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC王牌', scores: { S: 42, S1: 54, S2: 66 }, highlight: true },
+      { role: '打者', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC協調(四位', scores: { S: 42, S1: 44, S2: 46 } },
+      { role: '打者', tier: 'WBC藍技', name: '專注狀態', scores: { S: 40.8, S1: 45.9, S2: 51 } },
+      { role: '打者', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC司令官', scores: { S: 39, S1: 44, S2: 49 } },
+      { role: '打者', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC二壘', scores: { S: 34.5, S1: 39, S2: 43.5 } },
+      { role: '打者', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC新手', scores: { S: 33, S1: 38, S2: 43 } },
+      { role: '打者', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC球員', scores: { S: 27, S1: 33, S2: 39 } },
+      { role: '打者', tier: 'WBC藍技', name: '上壘專家', scores: { S: 26.22, S1: 29.34, S2: 32.46 } },
+      { role: '打者', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC協調(二位', scores: { S: 24.5, S1: 26.5, S2: 28.5 } },
+      { role: '打者', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC外野手', scores: { S: 24, S1: 26, S2: 34 } },
+      { role: '打者', tier: 'WBC藍技', name: '錦標賽精神', scores: { S: 22.5, S1: 30, S2: 37.5 } },
+      { role: '打者', tier: 'WBC藍技', name: '關鍵終結者', scores: { S: 21.3, S1: 25.6, S2: 29.9 } },
+
+      // --- WBC 投手藍技 ---
+      { role: '投手', tier: 'WBC藍技', name: '專注狀態', scores: { S: 52, S1: 58.5, S2: 65 } },
+      { role: '投手', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC王牌', scores: { S: 46, S1: 58.5, S2: 71 }, highlight: true },
+      { role: '投手', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC協調(四位', scores: { S: 36, S1: 38, S2: 40 } },
+      { role: '投手', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC前線', scores: { S: 33, S1: 38.5, S2: 44 } },
+      { role: '投手', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC球員', scores: { S: 31.5, S1: 38.5, S2: 45.5 } },
+      { role: '投手', tier: 'WBC藍技', name: '錦標賽精神', scores: { S: 22.5, S1: 30, S2: 37.5 } },
+      { role: '投手', tier: 'WBC藍技', name: 'WORLD BASEBALL CLASSIC協調(二位', scores: { S: 22, S1: 24, S2: 26 } },
+      { role: '投手', tier: 'WBC藍技', name: '關鍵終結者', scores: { S: 21.3, S1: 25.6, S2: 29.9 } },
+      { role: '投手', tier: 'WBC藍技', name: '揮臂式投球', scores: { S: 20.5, S1: 25.2, S2: 29.9 } },
+      { role: '投手', tier: 'WBC藍技', name: 'Drive Line', scores: { S: 19.1, S1: 20.35, S2: 24.5 } },
+
+      // --- 打者金技 ---
+      { role: '打者', tier: '金技', name: '凝聚力', scores: { S: 23, S1: 24, S2: 25, S3: 26, S4: 27 } },
+      { role: '打者', tier: '金技', name: '挑戰精神', scores: { S: 18.5, S1: 21.5, S2: 24.5, S3: 27.5, S4: 30.5 } },
+      { role: '打者', tier: '金技', name: '中央打線', scores: { S: 18, S1: 21, S2: 24, S3: 27, S4: 30 } },
+      { role: '打者', tier: '金技', name: '客場戰神', scores: { S: 17.5, S1: 22.5, S2: 27.5, S3: 32.5, S4: 37.5 } },
+      { role: '打者', tier: '金技', name: '捕手引導', scores: { S: 17.5, S1: 24, S2: 28, S3: 34.5, S4: 36 }, highlight: true },
+      { role: '打者', tier: '金技', name: '疊加', scores: { S: 16.24, S1: 21.94, S2: 22.94, S3: 23.94, S4: 24.94 } },
+      { role: '打者', tier: '金技', name: '打擊專家', scores: { S: 16, S1: 20, S2: 24, S3: 28, S4: 30 } },
+      { role: '打者', tier: '金技', name: '專注', scores: { S: 15.3, S1: 18.5, S2: 21.7, S3: 27.4, S4: 30.6 } },
+      { role: '打者', tier: '金技', name: '打擊機器', scores: { S: 15, S1: 17.5, S2: 20, S3: 22.5, S4: 25 } },
+      { role: '打者', tier: '金技', name: '全方位壓迫', scores: { S: 15, S1: 19, S2: 20.5, S3: 22, S4: 25.5 } },
+      { role: '打者', tier: '金技', name: '氣勢', scores: { S: 14.7, S1: 16.8, S2: 18.9, S3: 21, S4: 23.1 } },
+      { role: '打者', tier: '金技', name: '超速節奏', scores: { S: 14.65, S1: 15.65, S2: 16.65, S3: 17.65, S4: 18.65 } },
+      { role: '打者', tier: '金技', name: '排名競爭', scores: { S: 14, S1: 15.5, S2: 17, S3: 18.5, S4: 20 } },
+      { role: '打者', tier: '金技', name: '挑戰者', scores: { S: 14, S1: 16.5, S2: 19, S3: 21.5, S4: 24 } },
+      { role: '打者', tier: '金技', name: '逆轉打者', scores: { S: 13.72, S1: 16.84, S2: 19.96, S3: 23.08, S4: 26.2 } },
+      { role: '打者', tier: '金技', name: '兩好球打者', scores: { S: 13.6, S1: 16.6, S2: 19.375, S3: 24.15, S4: 25.93 } },
+      { role: '打者', tier: '金技', name: '下位打線', scores: { S: 13.5, S1: 16, S2: 18.5, S3: 21, S4: 23.5 } },
+      { role: '打者', tier: '金技', name: '接觸型打者', scores: { S: 13.5, S1: 17.5, S2: 20, S3: 24, S4: 26.5 } },
+      { role: '打者', tier: '金技', name: '勝利的喊聲', scores: { S: 13.28, S1: 14.1, S2: 14.93, S3: 15.75, S4: 16.58 } },
+      { role: '打者', tier: '金技', name: '五項全能球員', scores: { S: 12.8, S1: 19.2, S2: 19.2, S3: 25.6, S4: 25.6 } },
+      { role: '打者', tier: '金技', name: '主場優勢', scores: { S: 12.5, S1: 15, S2: 17.5, S3: 20, S4: 22.5 } },
+      { role: '打者', tier: '金技', name: '掌握主導權', scores: { S: 12.3, S1: 15, S2: 17.7, S3: 20.4, S4: 23.1 } },
+      { role: '打者', tier: '金技', name: '攻守俱佳', scores: { S: 12.2, S1: 19.4, S2: 20.4, S3: 25.2, S4: 26.2 } },
+      { role: '打者', tier: '金技', name: '時機', scores: { S: 12, S1: 13.5, S2: 15, S3: 16.5, S4: 18 } },
+      { role: '打者', tier: '金技', name: '守備專家', scores: { S: 12, S1: 16, S2: 20, S3: 24, S4: 28 } },
+      { role: '打者', tier: '金技', name: '最佳球員', scores: { S: 12, S1: 15, S2: 21, S3: 27, S4: 33 } },
+      { role: '打者', tier: '金技', name: '英雄', scores: { S: 10.5, S1: 15, S2: 16.5, S3: 21, S4: 22.5 } },
+      { role: '打者', tier: '金技', name: '常勝軍', scores: { S: 10.34, S1: 11.84, S2: 13.34, S3: 14.84, S4: 16.34 } },
+      { role: '打者', tier: '金技', name: '中心打線', scores: { S: 10, S1: 12, S2: 14, S3: 16, S4: 18 } },
+      { role: '打者', tier: '金技', name: '積極打者', scores: { S: 9.8, S1: 11.8, S2: 13.76, S3: 15.72, S4: 17.68 } },
+      { role: '打者', tier: '金技', name: '一棒打者', scores: { S: 8, S1: 8.5, S2: 10.5, S3: 11, S4: 13 } },
+      { role: '打者', tier: '金技', name: '下半場專注力', scores: { S: 8, S1: 9.33, S2: 10.66, S3: 11.99, S4: 13.33 } },
+      { role: '打者', tier: '金技', name: '特別代打', scores: { S: 7.5, S1: 9, S2: 10.5, S3: 12, S4: 13.5 } },
+      { role: '打者', tier: '金技', name: '高球打者', scores: { S: 3.2, S1: 4, S2: 4.8, S3: 5.6, S4: 6.4 } },
+      { role: '打者', tier: '金技', name: '關鍵打者', scores: { S: 3.15, S1: 3.78, S2: 4.41, S3: 5.04, S4: 5.67 } },
+      { role: '打者', tier: '金技', name: '向上揮棒', scores: { S: 3, S1: 3.6, S2: 4.2, S3: 4.8, S4: 5.4 } },
+      { role: '打者', tier: '金技', name: '飛毛腿', scores: { S: 0, S1: 0, S2: 0, S3: 0, S4: 0 } },
+      { role: '打者', tier: '金技', name: '聯賽強者', scores: { S: 0, S1: 0, S2: 0, S3: 0, S4: 0 } },
+
+      // --- 投手金技 ---
+      { role: '投手', tier: '金技', name: '刻苦訓練', scores: { S: 25.63, S1: 30.25, S2: 30.75, S3: 31.25, S4: 31.75 } },
+      { role: '投手', tier: '金技', name: '迅速處理(RP)', scores: { S: 25.6, S1: 29.3, S2: 33.3, S3: 37.3, S4: 41.3 }, highlight: true },
+      { role: '投手', tier: '金技', name: '雙重終結者(RP)', scores: { S: 23, S1: 27.5, S2: 32, S3: 36.5, S4: 41 }, highlight: true },
+      { role: '投手', tier: '金技', name: '凝聚力', scores: { S: 21.5, S1: 22.5, S2: 23.5, S3: 24.5, S4: 25.5 } },
+      { role: '投手', tier: '金技', name: '氣勢', scores: { S: 21, S1: 24, S2: 27, S3: 30, S4: 33 } },
+      { role: '投手', tier: '金技', name: '獨一無二', scores: { S: 21, S1: 27, S2: 36, S3: 45, S4: 51 } },
+      { role: '投手', tier: '金技', name: '挑戰精神', scores: { S: 20.5, S1: 24, S2: 27.5, S3: 31, S4: 34.5 } },
+      { role: '投手', tier: '金技', name: '質量開始', scores: { S: 19.5, S1: 22.75, S2: 26, S3: 29.25, S4: 32.5 } },
+      { role: '投手', tier: '金技', name: '王牌', scores: { S: 17.5, S1: 21, S2: 24.5, S3: 28, S4: 31.5 } },
+      { role: '投手', tier: '金技', name: '超速節奏', scores: { S: 17.22, S1: 18.22, S2: 19.22, S3: 20.22, S4: 21.22 } },
+      { role: '投手', tier: '金技', name: '挑戰者', scores: { S: 16.5, S1: 19.5, S2: 22.5, S3: 25.5, S4: 28.5 } },
+      { role: '投手', tier: '金技', name: '客場戰神', scores: { S: 16.5, S1: 21, S2: 25.5, S3: 30, S4: 34.5 } },
+      { role: '投手', tier: '金技', name: '王牌雙投', scores: { S: 16.5, S1: 21, S2: 25.5, S3: 30, S4: 34.5 } },
+      { role: '投手', tier: '金技', name: '專精', scores: { S: 15.5, S1: 18, S2: 20.5, S3: 23, S4: 25.5 } },
+      { role: '投手', tier: '金技', name: '全方位壓迫', scores: { S: 15, S1: 16.5, S2: 20.5, S3: 22, S4: 26 } },
+      { role: '投手', tier: '金技', name: '排名競爭', scores: { S: 14.5, S1: 17, S2: 19.5, S3: 22, S4: 24.5 } },
+      { role: '投手', tier: '金技', name: '最佳球員', scores: { S: 14.5, S1: 17.5, S2: 24, S3: 30, S4: 36.5 } },
+      { role: '投手', tier: '金技', name: '追擊區', scores: { S: 14.5, S1: 16, S2: 19.5, S3: 21, S4: 24.5 } },
+      { role: '投手', tier: '金技', name: '勝利的喊聲', scores: { S: 12.75, S1: 15, S2: 17.25, S3: 19.5, S4: 21.75 } },
+      { role: '投手', tier: '金技', name: '一人投手', scores: { S: 12.73, S1: 14.81, S2: 16.89, S3: 18.97, S4: 21.05 } },
+      { role: '投手', tier: '金技', name: '主場優勢', scores: { S: 12.5, S1: 15, S2: 17.5, S3: 20, S4: 22.5 } },
+      { role: '投手', tier: '金技', name: '掌握主導權', scores: { S: 12.3, S1: 15, S2: 17.7, S3: 20.4, S4: 23.1 } },
+      { role: '投手', tier: '金技', name: '無法觸及', scores: { S: 12, S1: 13.5, S2: 15, S3: 16.5, S4: 18 } },
+      { role: '投手', tier: '金技', name: '藝術家', scores: { S: 12, S1: 13.5, S2: 15, S3: 16.5, S4: 18 } },
+      { role: '投手', tier: '金技', name: '好的開始', scores: { S: 11.94, S1: 14.18, S2: 16.42, S3: 18.66, S4: 20.9 } },
+      { role: '投手', tier: '金技', name: '精準控球', scores: { S: 11.8, S1: 18.6, S2: 19.6, S3: 26.4, S4: 27.4 } },
+      { role: '投手', tier: '金技', name: '疊加', scores: { S: 11.66, S1: 12.66, S2: 13.66, S3: 14.66, S4: 15.66 } },
+      { role: '投手', tier: '金技', name: '必勝組', scores: { S: 11.34, S1: 13.23, S2: 15.12, S3: 17.01, S4: 18.9 } },
+      { role: '投手', tier: '金技', name: '英雄', scores: { S: 10.5, S1: 15, S2: 16.5, S3: 21, S4: 22.5 } },
+      { role: '投手', tier: '金技', name: '決勝球', scores: { S: 10.5, S1: 14, S2: 17.5, S3: 22.5, S4: 26 } },
+      { role: '投手', tier: '金技', name: '專注', scores: { S: 10.5, S1: 11.4, S2: 14.3, S3: 17.2, S4: 20.1 } },
+      { role: '投手', tier: '金技', name: '常勝軍', scores: { S: 10.34, S1: 11.84, S2: 13.34, S3: 14.84, S4: 16.34 } },
+      { role: '投手', tier: '金技', name: '火熱之手', scores: { S: 10.26, S1: 13.14, S2: 16.02, S3: 18.9, S4: 21.78 } },
+      { role: '投手', tier: '金技', name: '新秀', scores: { S: 10.25, S1: 11.75, S2: 13.25, S3: 14.75, S4: 16.25 } },
+      { role: '投手', tier: '金技', name: '打斷氣勢', scores: { S: 6.55, S1: 7.64, S2: 8.73, S3: 9.82, S4: 10.91 } },
+      { role: '投手', tier: '金技', name: '關鍵投手', scores: { S: 4.73, S1: 5.67, S2: 6.62, S3: 7.56, S4: 8.51 } },
+      { role: '投手', tier: '金技', name: '守護神', scores: { S: 4.5, S1: 5.25, S2: 6, S3: 6.75, S4: 7.5 } },
+      { role: '投手', tier: '金技', name: '打線支援', scores: { S: 3.82, S1: 4.59, S2: 5.36, S3: 6.13, S4: 6.9 } },
+      { role: '投手', tier: '金技', name: '聯賽強者', scores: { S: 2.5, S1: 3, S2: 3.5, S3: 4, S4: 4.5 } },
+
+      // --- HOF 打者紅技 ---
+      { role: '打者', tier: 'HOF紅技', name: 'BIG HURT', scores: { S: 57, S1: 66 } },
+      { role: '打者', tier: 'HOF紅技', name: '偉大存在', scores: { S: 50.5, S1: 57.5 } },
+      { role: '打者', tier: 'HOF紅技', name: 'LITTLE BIG MAN', scores: { S: 42, S1: 51, '不吃左打S': 32, '不吃左打S1': 39 }, note: '(全吃) / (不吃左打32、39)' },
+      { role: '打者', tier: 'HOF紅技', name: '打者化學效應', scores: { S: 40, S1: 48 } },
+      { role: '打者', tier: 'HOF紅技', name: '鐵馬', scores: { S: 39, S1: 48 } },
+      { role: '打者', tier: 'HOF紅技', name: '隱藏威脅', scores: { S: 37.6, S1: 41.4 } },
+      { role: '打者', tier: 'HOF紅技', name: '適應性打者', scores: { S: 36.6, S1: 44.2 } },
+      { role: '打者', tier: 'HOF紅技', name: '預告一擊', scores: { S: 32.64, S1: 37.58 } },
+      { role: '打者', tier: 'HOF紅技', name: '速度&觸擊', scores: { S: 32.6, S1: 38.9 } },
+      { role: '打者', tier: 'HOF紅技', name: '第二次機會', scores: { S: 32.28, S1: 38.35 } },
+      { role: '打者', tier: 'HOF紅技', name: '紀錄保持者', scores: { S: 30.5, S1: 35 } },
+      { role: '打者', tier: 'HOF紅技', name: '心理戰', scores: { S: 30.38, S1: 34.15 } },
+      { role: '打者', tier: 'HOF紅技', name: '長打本能', scores: { S: 30, S1: 35 } },
+      { role: '打者', tier: 'HOF紅技', name: 'CHIPPER', scores: { S: 30, S1: 34.5, '專屬S': 42, '專屬S1': 48.5 }, note: '(不吃左右開弓) / 42(專屬S) / 48.5(專屬S1)' },
+      { role: '打者', tier: 'HOF紅技', name: '專精打擊', scores: { S: 29.5, S1: 34.25 } },
+      { role: '打者', tier: 'HOF紅技', name: '王牌專家', scores: { S: 28.2, S1: 31.8 } },
+      { role: '打者', tier: 'HOF紅技', name: '強健之肩', scores: { S: 28, S1: 33 } },
+      { role: '打者', tier: 'HOF紅技', name: '持之以恆', scores: { S: 26.75, S1: 30.96 } },
+      { role: '打者', tier: 'HOF紅技', name: '聯盟霸主', scores: { S: 24, S1: 27 } },
+      { role: '打者', tier: 'HOF紅技', name: '強力打擊者', scores: { S: 23.25, S1: 30.1 } },
+      { role: '打者', tier: 'HOF紅技', name: '扭轉局勢者', scores: { S: 23.18, S1: 26.93 } },
+      { role: '打者', tier: 'HOF紅技', name: '欺騙獵人', scores: { S: 23, S1: 24.6 } },
+      { role: '打者', tier: 'HOF紅技', name: '慢熱型', scores: { S: 22.25, S1: 26.25 } },
+      { role: '打者', tier: 'HOF紅技', name: '自由揮棒', scores: { S: 20.43, S1: 22.93 } },
+      { role: '打者', tier: 'HOF紅技', name: '背靠背', scores: { S: 19.35, S1: 22.24 } },
+
+      // --- HOF 投手紅技 ---
+      { role: '投手', tier: 'HOF紅技', name: '王牌專家', scores: { S: 60.5, S1: 67 } },
+      { role: '投手', tier: 'HOF紅技', name: '主席', scores: { S: 60, S1: 70 } },
+      { role: '投手', tier: 'HOF紅技', name: 'BIG UNIT', scores: { S: 49.1, S1: 56.8 } },
+      { role: '投手', tier: 'HOF紅技', name: '前線王牌', scores: { S: 35.2, S1: 41.8 } },
+      { role: '投手', tier: 'HOF紅技', name: '投手化學效應', scores: { S: 33.75, S1: 40.5 } },
+      { role: '投手', tier: 'HOF紅技', name: '主力', scores: { S: 33.6, S1: 39 } },
+      { role: '投手', tier: 'HOF紅技', name: '疑惑的球種', scores: { S: 33, S1: 42 } },
+      { role: '投手', tier: 'HOF紅技', name: '不屈不撓', scores: { S: 32.9, S1: 37.7 } },
+      { role: '投手', tier: 'HOF紅技', name: '紀錄保持者', scores: { S: 30.5, S1: 35 } },
+      { role: '投手', tier: 'HOF紅技', name: '信賴先發', scores: { S: 30, S1: 35 } },
+      { role: '投手', tier: 'HOF紅技', name: '解鈴還須繫鈴人', scores: { S: 28.48, S1: 33.6 } },
+      { role: '投手', tier: 'HOF紅技', name: '消防員', scores: { S: 28.476, S1: 32.076 } },
+      { role: '投手', tier: 'HOF紅技', name: '300勝投手', scores: { S: 26.46, S1: 33.34 } },
+      { role: '投手', tier: 'HOF紅技', name: '後段打線支配者', scores: { S: 24.64, S1: 28.55 } },
+      { role: '投手', tier: 'HOF紅技', name: '聯盟霸主', scores: { S: 24, S1: 27 } },
+      { role: '投手', tier: 'HOF紅技', name: '脫逃藝術家', scores: { S: 22.71, S1: 26.21 } },
+      { role: '投手', tier: 'HOF紅技', name: '輕鬆局數', scores: { S: 21.7, S1: 24.2 } },
+      { role: '投手', tier: 'HOF紅技', name: '蝴蝶球大師', scores: { S: 21.25, S1: 23.5 } },
+      { role: '投手', tier: 'HOF紅技', name: '欺騙指揮官', scores: { S: 20, S1: 21 } },
+      { role: '投手', tier: 'HOF紅技', name: '慢熱型', scores: { S: 17.875, S1: 20.175 } },
+      { role: '投手', tier: 'HOF紅技', name: '領先守護者', scores: { S: 17.75, S1: 19.7 } },
+      { role: '投手', tier: 'HOF紅技', name: '火星塞', scores: { S: 14.82, S1: 17.08 } },
+      { role: '投手', tier: 'HOF紅技', name: 'Moose', scores: { S: 14, S1: 16 } },
+      { role: '投手', tier: 'HOF紅技', name: '終極王者', scores: { S: 12.25, S1: 14.295 } },
+
+      // --- 打者耀黑技能 ---
+      { role: '打者', tier: '耀黑技能', name: '節奏製造者', scores: { S: 25.3, S1: 40.3, S2: 51.4 } },
+      { role: '打者', tier: '耀黑技能', name: '5項游擊手', scores: { S: 24, S1: 34.5, S2: 49 } },
+      { role: '打者', tier: '耀黑技能', name: '打點製造機', scores: { S: 23, S1: 31, S2: 45 } },
+      { role: '打者', tier: '耀黑技能', name: '打擊天才', scores: { S: 21, S1: 30, S2: 39 } },
+      { role: '打者', tier: '耀黑技能', name: '先發攻擊', scores: { S: 20.5, S1: 34, S2: 43 } },
+      { role: '打者', tier: '耀黑技能', name: '勇氣', scores: { S: 18, S1: 27, S2: 34 } },
+      { role: '打者', tier: '耀黑技能', name: '外野守護者', scores: { S: 18, S1: 30, S2: 38 } },
+      { role: '打者', tier: '耀黑技能', name: '洞察', scores: { S: 17.6, S1: 23.5, S2: 29.4 } },
+      { role: '打者', tier: '耀黑技能', name: '巧打者', scores: { S: 17.5, S1: 27, S2: 34 } },
+      { role: '打者', tier: '耀黑技能', name: '機會火花', scores: { S: 15.48, S1: 20.48, S2: 25.1 } },
+      { role: '打者', tier: '耀黑技能', name: '黃金精神', scores: { S: 14, S1: 25.5, S2: 34.5 } },
+      { role: '打者', tier: '耀黑技能', name: '挑戰本能', scores: { S: 11.08, S1: 19.66, S2: 25.74 } },
+      { role: '打者', tier: '耀黑技能', name: '聯盟主導者', scores: { S: 10, S1: 12, S2: 14 } },
+      { role: '打者', tier: '耀黑技能', name: '打點獵人', scores: { S: 8.6, S1: 15.4, S2: 18.8 } },
+
+      // --- 投手耀黑技能 ---
+      { role: '投手', tier: '耀黑技能', name: '關鍵中繼', scores: { S: 37.2, S1: 47.14, S2: 62.06 }, note: '(RP限定)' },
+      { role: '投手', tier: '耀黑技能', name: '勝利方程式', scores: { S: 28, S1: 37, S2: 50.5 }, note: '(SU限定)' },
+      { role: '投手', tier: '耀黑技能', name: '逆轉旗幟', scores: { S: 23, S1: 31, S2: 44 }, note: '(LRP限定)' },
+      { role: '投手', tier: '耀黑技能', name: '無失分開始', scores: { S: 22.5, S1: 32.5, S2: 47.5 } },
+      { role: '投手', tier: '耀黑技能', name: '最佳狀態', scores: { S: 21, S1: 30, S2: 39 } },
+      { role: '投手', tier: '耀黑技能', name: '勇氣', scores: { S: 18, S1: 27, S2: 34 } },
+      { role: '投手', tier: '耀黑技能', name: '穩定投球', scores: { S: 15.25, S1: 25, S2: 36 } },
+      { role: '投手', tier: '耀黑技能', name: '投手丘之星', scores: { S: 15.25, S1: 25, S2: 36 } },
+      { role: '投手', tier: '耀黑技能', name: '黃金精神', scores: { S: 14, S1: 25.5, S2: 34.5 } },
+      { role: '投手', tier: '耀黑技能', name: '挑戰本能', scores: { S: 12.68, S1: 19.02, S2: 25.36 } },
+      { role: '投手', tier: '耀黑技能', name: '聯盟主導者', scores: { S: 10, S1: 12, S2: 14 } },
+      { role: '投手', tier: '耀黑技能', name: '領先控制', scores: { S: 10, S1: 16.5, S2: 20.5 } },
+      { role: '投手', tier: '耀黑技能', name: '冷靜', scores: { S: 8.6, S1: 15.4, S2: 18.8 } },
+
+      // --- Moment 打者綠技 ---
+      { role: '打者', tier: 'Moment綠技', name: 'BORN TO HIT', scores: { S: 45 } },
+      { role: '打者', tier: 'Moment綠技', name: '進攻領袖', scores: { S: 38.857 } },
+      { role: '打者', tier: 'Moment綠技', name: 'WarLeader', scores: { S: 34.5 } },
+      { role: '打者', tier: 'Moment綠技', name: '指揮官', scores: { S: 30 }, highlight: true },
+      { role: '打者', tier: 'Moment綠技', name: '2026年度表現三人組', scores: { S: 30 } },
+      { role: '打者', tier: 'Moment綠技', name: '季後賽英雄', scores: { S: 28.8 } },
+      { role: '打者', tier: 'Moment綠技', name: 'FREE AGENT', scores: { S: 27.5 } },
+      { role: '打者', tier: 'Moment綠技', name: '孤星', scores: { S: 27.5 } },
+      { role: '打者', tier: 'Moment綠技', name: '安打製造機', scores: { S: 26 } },
+      { role: '打者', tier: 'Moment綠技', name: 'HotStart', scores: { S: 25.29 } },
+      { role: '打者', tier: 'Moment綠技', name: '全能型球員', scores: { S: 25 } },
+      { role: '打者', tier: 'Moment綠技', name: '2025年度表現三人組', scores: { S: 23.7 } },
+      { role: '打者', tier: 'Moment綠技', name: 'Standout', scores: { S: 23.45 } },
+      { role: '打者', tier: 'Moment綠技', name: '核心主導者', scores: { S: 22 } },
+      { role: '打者', tier: 'Moment綠技', name: '核心球員', scores: { S: 20 } },
+      { role: '打者', tier: 'Moment綠技', name: '旋風主角', scores: { S: 19 } },
+      { role: '打者', tier: 'Moment綠技', name: '領導力', scores: { S: 19 } },
+      { role: '打者', tier: 'Moment綠技', name: '關鍵球員', scores: { S: 18 } },
+      { role: '打者', tier: 'Moment綠技', name: 'BIG BATS', scores: { S: 17.25 } },
+      { role: '打者', tier: 'Moment綠技', name: '強力打者', scores: { S: 17.1 } },
+      { role: '打者', tier: 'Moment綠技', name: '傳奇球員', scores: { S: 15 } },
+      { role: '打者', tier: 'Moment綠技', name: '資深球員', scores: { S: 15 } },
+      { role: '打者', tier: 'Moment綠技', name: '重砲手', scores: { S: 13.2 } },
+      { role: '打者', tier: 'Moment綠技', name: 'FLASHBACK', scores: { S: 10.73 } },
+
+      // --- Moment 投手綠技 ---
+      { role: '投手', tier: 'Moment綠技', name: '大師', scores: { S: 51, 'SP': 63, 'RP': 40.5 }, note: '(SP63/RP40.5)' },
+      { role: '投手', tier: 'Moment綠技', name: '最後防線', scores: { S: 49.5 }, note: '(CP限定)' },
+      { role: '投手', tier: 'Moment綠技', name: '牛棚主力', scores: { S: 47.075 }, note: '(SU、CP限定)' },
+      { role: '投手', tier: 'Moment綠技', name: '強力投手', scores: { S: 42.5 } },
+      { role: '投手', tier: 'Moment綠技', name: 'LOCKDOWN', scores: { S: 41.5 }, highlight: true },
+      { role: '投手', tier: 'Moment綠技', name: '孤星', scores: { S: 39 }, note: '(LRP限定)' },
+      { role: '投手', tier: 'Moment綠技', name: 'HotStart', scores: { S: 36 }, note: '(RP、CP限定)' },
+      { role: '投手', tier: 'Moment綠技', name: '2026年度表現三人組', scores: { S: 35 } },
+      { role: '投手', tier: 'Moment綠技', name: '季後賽英雄', scores: { S: 33.5 } },
+      { role: '投手', tier: 'Moment綠技', name: 'WarLeader', scores: { S: 33 } },
+      { role: '投手', tier: 'Moment綠技', name: 'FREE AGENT', scores: { S: 30 } },
+      { role: '投手', tier: 'Moment綠技', name: 'Standout', scores: { S: 30 }, note: '(RP、CP限定)' },
+      { role: '投手', tier: 'Moment綠技', name: '2025年度表現三人組', scores: { S: 28.5 } },
+      { role: '投手', tier: 'Moment綠技', name: '牛棚王牌', scores: { S: 28.13 } },
+      { role: '投手', tier: 'Moment綠技', name: '旋風主角', scores: { S: 27.5 } },
+      { role: '投手', tier: 'Moment綠技', name: '搖擺人', scores: { S: 24.05 } },
+      { role: '投手', tier: 'Moment綠技', name: '首席佈局', scores: { S: 22.5 } },
+      { role: '投手', tier: 'Moment綠技', name: '關鍵球員(CP)', scores: { S: 22 }, note: '(CP限定)' },
+      { role: '投手', tier: 'Moment綠技', name: '精英', scores: { S: 21 } },
+      { role: '投手', tier: 'Moment綠技', name: '關鍵球員', scores: { S: 21 } },
+      { role: '投手', tier: 'Moment綠技', name: '核心球員', scores: { S: 20 } },
+      { role: '投手', tier: 'Moment綠技', name: '關鍵主力', scores: { S: 19.5 } },
+      { role: '投手', tier: 'Moment綠技', name: '傳奇球員', scores: { S: 15 } },
+      { role: '投手', tier: 'Moment綠技', name: '資深球員', scores: { S: 15 } },
+      { role: '投手', tier: 'Moment綠技', name: 'FLASHBACK', scores: { S: 11.73 } }
+    ];
+
+    let allSkills = [...DEFAULT_SKILLS];
+    let currentRole = '打者';
+    let currentDbTier = '全部';
+    let slots = [
+      { tier: '金技', name: '', grade: 'S' },
+      { tier: '金技', name: '', grade: 'S' },
+      { tier: '金技', name: '', grade: 'S' }
+    ];
+    let comparisons = [];
+
+    const TIERS = ['金技', 'Moment綠技', '耀黑技能', 'HOF紅技', 'WBC藍技'];
+    const TIER_BADGE = {
+      '金技': 'tier-gold',
+      'Moment綠技': 'tier-moment',
+      '耀黑技能': 'tier-glory',
+      'HOF紅技': 'tier-hof',
+      'WBC藍技': 'tier-wbc'
+    };
+
+    // 初始化
+    window.addEventListener('DOMContentLoaded', () => {
+      const cachedCsv = localStorage.getItem('mlb_skills_csv');
+      if (cachedCsv) {
+        applyCsvData(cachedCsv, '離線快取資料');
+      }
+      if (GOOGLE_SHEET_CSV_URL) {
+        syncFromGoogleSheet();
+      }
+      renderTierFilters();
+      renderSlots();
+      renderDatabase();
+    });
+
+    // Google 試算表同步
+    async function syncFromGoogleSheet() {
+      if (!GOOGLE_SHEET_CSV_URL) return;
+      const badge = document.getElementById('sync-badge');
+      badge.textContent = '同步中...';
+      try {
+        const res = await fetch(GOOGLE_SHEET_CSV_URL + '&t=' + Date.now());
+        if (!res.ok) throw new Error('網路回應錯誤');
+        const text = await res.text();
+        localStorage.setItem('mlb_skills_csv', text);
+        applyCsvData(text, '雲端試算表已同步');
+      } catch (e) {
+        badge.textContent = '離線/基準資料';
+      }
+    }
+
+    function manualSync() {
+      if (!GOOGLE_SHEET_CSV_URL) {
+        alert('目前使用內建完整資料庫。\n若要啟用雲端自動更新，請在 index.html 填入你的 Google 試算表 CSV 網址。');
+        return;
+      }
+      syncFromGoogleSheet();
+    }
+
+    function parseCsvLine(line) {
+      const result = [];
+      let cur = '', inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') inQuotes = !inQuotes;
+        else if (ch === ',' && !inQuotes) { result.push(cur.trim()); cur = ''; }
+        else cur += ch;
+      }
+      result.push(cur.trim());
+      return result;
+    }
+
+    function applyCsvData(csvText, statusLabel) {
+      const lines = csvText.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) return;
+      const parsed = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i]);
+        if (cols.length < 4 || !cols[2]) continue;
+        const scores = {};
+        const gradeKeys = ['S', 'S1', 'S2', 'S3', 'S4'];
+        gradeKeys.forEach((g, idx) => {
+          const val = parseFloat(cols[3 + idx]);
+          if (!isNaN(val)) scores[g] = val;
+        });
+        if (cols[8]) {
+          cols[8].split(',').forEach(pair => {
+            const [k, v] = pair.split(':');
+            if (k && !isNaN(parseFloat(v))) scores[k.trim()] = parseFloat(v);
+          });
+        }
+        parsed.push({
+          role: cols[0] || '打者',
+          tier: cols[1] || '金技',
+          name: cols[2],
+          scores,
+          note: cols[9] || '',
+          highlight: (cols[10] || '').toUpperCase() === 'TRUE'
+        });
+      }
+      if (parsed.length > 0) {
+        allSkills = parsed;
+        document.getElementById('sync-badge').textContent = statusLabel;
+        document.getElementById('sync-badge').className = 'px-2 py-0.5 text-[11px] rounded bg-emerald-950 text-emerald-300 border border-emerald-700';
+        renderSlots();
+        renderDatabase();
+      }
+    }
+
+    // 分頁與定位切換
+    function switchTab(tab) {
+      document.getElementById('view-calc').classList.toggle('hidden', tab !== 'calc');
+      document.getElementById('view-db').classList.toggle('hidden', tab !== 'db');
+      document.getElementById('tab-calc').className = tab === 'calc'
+        ? 'py-2 rounded-lg text-sm font-bold bg-blue-600 text-white transition'
+        : 'py-2 rounded-lg text-sm font-bold text-slate-400 hover:text-white transition';
+      document.getElementById('tab-db').className = tab === 'db'
+        ? 'py-2 rounded-lg text-sm font-bold bg-blue-600 text-white transition'
+        : 'py-2 rounded-lg text-sm font-bold text-slate-400 hover:text-white transition';
+    }
+
+    function switchRole(role) {
+      currentRole = role;
+      document.getElementById('current-role-label').textContent = role;
+      document.getElementById('role-batter').className = role === '打者'
+        ? 'py-2 rounded-lg text-sm font-bold bg-amber-500 text-slate-950 transition'
+        : 'py-2 rounded-lg text-sm font-bold text-slate-400 hover:text-white transition';
+      document.getElementById('role-pitcher').className = role === '投手'
+        ? 'py-2 rounded-lg text-sm font-bold bg-amber-500 text-slate-950 transition'
+        : 'py-2 rounded-lg text-sm font-bold text-slate-400 hover:text-white transition';
+      slots = [
+        { tier: '金技', name: '', grade: 'S' },
+        { tier: '金技', name: '', grade: 'S' },
+        { tier: '金技', name: '', grade: 'S' }
+      ];
+      renderSlots();
+      renderDatabase();
+    }
+
+    // 渲染 3 個技能計算欄位
+    function renderSlots() {
+      const container = document.getElementById('slots-container');
+      container.innerHTML = '';
+
+      slots.forEach((slot, idx) => {
+        const tierSkills = allSkills.filter(s => s.role === currentRole && s.tier === slot.tier);
+        const selectedSkill = tierSkills.find(s => s.name === slot.name);
+        const availableGrades = selectedSkill ? Object.keys(selectedSkill.scores) : ['S', 'S1', 'S2', 'S3', 'S4'];
+        if (selectedSkill && !availableGrades.includes(slot.grade)) {
+          slot.grade = availableGrades[0];
+        }
+        const scoreVal = selectedSkill ? (selectedSkill.scores[slot.grade] ?? 0) : 0;
+
+        const card = document.createElement('div');
+        card.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between space-y-3';
+        card.innerHTML = `
+          <div class="space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black text-slate-400">技能欄 #${idx + 1}</span>
+              <span class="text-base font-black text-amber-400 tabular-nums">${scoreVal.toFixed(2)} 分</span>
+            </div>
+
+            <!-- 階級選擇 -->
+            <div class="grid grid-cols-5 gap-1">
+              ${TIERS.map(t => `
+                <button onclick="updateSlotTier(${idx}, '${t}')"
+                  class="py-1 rounded text-[11px] font-bold border transition ${slot.tier === t
+                    ? TIER_BADGE[t] + ' border-white/40 shadow'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'}">
+                  ${t.replace('Moment', 'M').replace('技能', '').replace('技', '')}
+                </button>
+              `).join('')}
+            </div>
+
+            <!-- 技能下拉選單 -->
+            <select onchange="updateSlotSkill(${idx}, this.value)"
+              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+              <option value="">-- 選擇${slot.tier} --</option>
+              ${tierSkills.map(s => `
+                <option value="${s.name}" ${s.name === slot.name ? 'selected' : ''}>
+                  ${s.name} (S:${s.scores.S})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
+          <!-- 階級按鈕 -->
+          <div class="space-y-1.5">
+            <div class="flex flex-wrap gap-1.5">
+              ${availableGrades.map(g => `
+                <button onclick="updateSlotGrade(${idx}, '${g}')"
+                  class="px-2.5 py-1 rounded-lg text-xs font-bold border transition ${slot.grade === g && selectedSkill
+                    ? 'bg-blue-600 border-blue-400 text-white'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'}">
+                  ${g}
+                </button>
+              `).join('')}
+            </div>
+            ${selectedSkill?.note ? `<p class="text-[11px] text-rose-400 font-medium">${selectedSkill.note}</p>` : ''}
+          </div>
+        `;
+        container.appendChild(card);
+      });
+
+      updateTotalScore();
+    }
+
+    function updateSlotTier(idx, tier) {
+      slots[idx] = { tier, name: '', grade: 'S' };
+      renderSlots();
+    }
+
+    function updateSlotSkill(idx, name) {
+      slots[idx].name = name;
+      slots[idx].grade = 'S';
+      renderSlots();
+    }
+
+    function updateSlotGrade(idx, grade) {
+      slots[idx].grade = grade;
+      renderSlots();
+    }
+
+    function resetSlots() {
+      slots = [
+        { tier: '金技', name: '', grade: 'S' },
+        { tier: '金技', name: '', grade: 'S' },
+        { tier: '金技', name: '', grade: 'S' }
+      ];
+      renderSlots();
+    }
+
+    function updateTotalScore() {
+      let total = 0;
+      const pills = document.getElementById('slot-summary-pills');
+      pills.innerHTML = '';
+
+      slots.forEach((slot, idx) => {
+        const sk = allSkills.find(s => s.role === currentRole && s.tier === slot.tier && s.name === slot.name);
+        const val = sk ? (sk.scores[slot.grade] ?? 0) : 0;
+        total += val;
+        pills.innerHTML += `
+          <div class="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1.5 truncate">
+            <span class="text-slate-500">#${idx + 1}</span>
+            <span class="text-slate-200 font-bold ml-1">${sk ? `${sk.name} (${slot.grade})` : '未選'}</span>
+          </div>
+        `;
+      });
+
+      document.getElementById('total-score').textContent = total.toFixed(2);
+    }
+
+    // 洗技對比區
+    function saveComparison() {
+      let total = 0;
+      const details = slots.map(slot => {
+        const sk = allSkills.find(s => s.role === currentRole && s.tier === slot.tier && s.name === slot.name);
+        const val = sk ? (sk.scores[slot.grade] ?? 0) : 0;
+        total += val;
+        return sk ? `${sk.name}[${slot.grade}]` : '空';
+      });
+      if (total === 0) return;
+      comparisons.unshift({ role: currentRole, total, text: details.join(' + ') });
+      renderComparisons();
+    }
+
+    function clearComparisons() {
+      comparisons = [];
+      renderComparisons();
+    }
+
+    function renderComparisons() {
+      const list = document.getElementById('comparison-list');
+      if (comparisons.length === 0) {
+        list.innerHTML = '尚未儲存對比組合，設定好上方 3 招後點擊「+ 加入洗技對比」。';
+        return;
+      }
+      const maxScore = Math.max(...comparisons.map(c => c.total));
+      list.innerHTML = comparisons.map((c, i) => `
+        <div class="flex items-center justify-between p-2.5 rounded-xl border ${c.total === maxScore
+          ? 'bg-amber-500/10 border-amber-500/50 text-amber-200'
+          : 'bg-slate-950 border-slate-800 text-slate-300'}">
+          <div class="truncate pr-2">
+            <span class="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 mr-1.5">${c.role}</span>
+            <span class="font-bold">${c.text}</span>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-sm font-black ${c.total === maxScore ? 'text-amber-400' : 'text-white'} tabular-nums">${c.total.toFixed(2)} 分</span>
+            <button onclick="comparisons.splice(${i},1);renderComparisons()" class="text-slate-500 hover:text-rose-400">&times;</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // 資料庫篩選與渲染
+    function renderTierFilters() {
+      const bar = document.getElementById('tier-filter-bar');
+      const items = ['全部', ...TIERS];
+      bar.innerHTML = items.map(t => `
+        <button onclick="currentDbTier='${t}';renderTierFilters();renderDatabase()"
+          class="px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 border transition ${currentDbTier === t
+            ? 'bg-blue-600 border-blue-400 text-white'
+            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'}">
+          ${t}
+        </button>
+      `).join('');
+    }
+
+    function renderDatabase() {
+      const keyword = document.getElementById('db-search').value.trim().toLowerCase();
+      const sortBy = document.getElementById('db-sort').value;
+
+      let filtered = allSkills.filter(s => {
+        if (s.role !== currentRole) return false;
+        if (currentDbTier !== '全部' && s.tier !== currentDbTier) return false;
+        if (keyword && !s.name.toLowerCase().includes(keyword)) return false;
+        return true;
+      });
+
+      if (sortBy !== 'default') {
+        filtered = [...filtered].sort((a, b) => (b.scores[sortBy] ?? -1) - (a.scores[sortBy] ?? -1));
+      }
+
+      const tbody = document.getElementById('db-table-body');
+      tbody.innerHTML = filtered.map(s => `
+        <tr class="hover:bg-slate-800/40 transition">
+          <td class="py-2.5 px-3 whitespace-nowrap">
+            <span class="px-2 py-0.5 rounded text-[11px] font-bold ${TIER_BADGE[s.tier] || 'bg-slate-700'}">${s.tier}</span>
+          </td>
+          <td class="py-2.5 px-3">
+            <div class="font-bold ${s.highlight ? 'text-rose-400' : 'text-slate-100'}">${s.name}</div>
+            ${s.note ? `<div class="text-[11px] text-rose-400/90">${s.note}</div>` : ''}
+          </td>
+          <td class="py-2.5 px-2 text-right font-mono font-bold text-slate-200">${s.scores.S ?? '-'}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-slate-300">${s.scores.S1 ?? '-'}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-slate-300">${s.scores.S2 ?? '-'}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-slate-300">${s.scores.S3 ?? '-'}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-slate-300">${s.scores.S4 ?? '-'}</td>
+          <td class="py-2.5 px-3 text-center whitespace-nowrap">
+            <button onclick="sendToCalc('${s.tier}', '${s.name.replace(/'/g, "\\'")}')"
+              class="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 text-xs font-bold transition">
+              + 試算
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function sendToCalc(tier, name) {
+      let targetIdx = slots.findIndex(s => !s.name);
+      if (targetIdx === -1) targetIdx = 0;
+      slots[targetIdx] = { tier, name, grade: 'S' };
+      switchTab('calc');
+      renderSlots();
+    }
+
+    // PWA Service Worker 註冊與安裝按鈕提示
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const btn = document.getElementById('install-btn');
+      btn.classList.remove('hidden');
+      btn.onclick = async () => {
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice;
+        btn.classList.add('hidden');
+        deferredPrompt = null;
+      };
+    });
+  </script>
+</body>
+</html>
