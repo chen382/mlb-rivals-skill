@@ -1,7 +1,7 @@
 {
-  "name": "MLB �l�ȹ�M �ޯ�����p����]���~�ۻs�^",
-  "short_name": "�l�ȧޯ����",
-  "description": "���s��-���~�s�@ MLB �l�ȹ�M���̻P���ޯ�����p��P��Ʈw",
+  "name": "MLB 勁旅對決 技能評分計算機（洛年自製）",
+  "short_name": "勁旅技能評分",
+  "description": "臥龍閣-洛年製作 MLB 勁旅對決打者與投手技能評分計算與資料庫",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f172a",
