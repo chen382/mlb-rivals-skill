@@ -1,6 +1,6 @@
 {
-  "name": "MLB 勁旅對決 技能評分計算機",
-  "short_name": "MLB 勁旅技能評分",
+  "name": "MLB 勁旅對決 26 技能評分計算機",
+  "short_name": "MLB 勁旅對決26 技能評分計算機",
   "description": "臥龍閣-洛年製作 MLB 勁旅對決打者與投手技能評分計算與資料庫",
   "start_url": "./index.html",
   "display": "standalone",
